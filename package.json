@@ -1,0 +1,11 @@
+{
+  "name": "healthcare-store",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Healthcare Store - CapsaCare Landing Page with Vercel Serverless Function",
+  "scripts": {
+    "dev": "node server.cjs",
+    "start": "node server.cjs"
+  }
+}
