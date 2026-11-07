@@ -47,7 +47,8 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.RESEND_API_KEY;
     const merchantEmail = process.env.MERCHANT_EMAIL || 'udodirithonia@gmail.com';
-    const configuredFrom = process.env.FROM_EMAIL || 'HEALTHCARE STORE <sales@healthcarestore.com.ng>';
+    const primaryFrom = process.env.FROM_EMAIL || 'HEALTHCARE STORE <sales@healthcarestore.com.ng>';
+    const verifiedFallbackFrom = 'Healthcare Store <orders@buyget.com.ng>';
 
     // 1. Merchant Notification HTML
     const merchantHtml = `
@@ -122,7 +123,7 @@ export default async function handler(req, res) {
         <div style="padding: 24px; color: #1f2937;">
           <p style="font-size: 16px; margin-top: 0;">Hello <strong>${fullName}</strong>,</p>
           <p style="color: #4b5563; line-height: 1.5; font-size: 14px;">
-            Thank you for ordering <strong>CapsaCare™ Neuropathy Relief Cream</strong> from <strong>Healthcare Store</strong>. Your order is received and our dispatch logistics team is currently processing it!
+            Thank you for ordering <strong>CapsaCare™ Neuropathy Relief Cream</strong> from <strong>Healthcare Store</strong>. Your order has been received and our dispatch logistics team is currently processing it!
           </p>
 
           <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 20px 0;">
@@ -157,8 +158,9 @@ export default async function handler(req, res) {
       </div>
     `;
 
-    // Helper to send email via Resend with auto-fallback for unverified domains
-    async function sendEmail(fromAddr, toAddr, subject, html) {
+    // Resilient sender function with auto-fallback to verified domain
+    async function sendEmailWithFallback(toAddr, subject, html) {
+      // 1. Try sending with the configured primary sender
       let response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -167,7 +169,8 @@ export default async function handler(req, res) {
           'User-Agent': 'Resend-Node/4.0.0',
         },
         body: JSON.stringify({
-          from: fromAddr,
+          from: primaryFrom,
+          reply_to: 'udodirithonia@gmail.com',
           to: Array.isArray(toAddr) ? toAddr : [toAddr],
           subject,
           html,
@@ -176,9 +179,10 @@ export default async function handler(req, res) {
 
       let data = await response.json();
 
-      // If domain is unverified, fallback to onboarding@resend.dev so the order email is NEVER lost
-      if (!response.ok && data?.message && data.message.includes('domain is not verified')) {
-        console.warn(`[Resend Notice] Domain ${fromAddr} unverified, falling back to onboarding@resend.dev`);
+      // 2. If primary domain (healthcarestore.com.ng) is unverified or rejected, fallback to verified domain
+      if (!response.ok) {
+        console.warn(`[Resend Notice] Primary sender ${primaryFrom} rejected (${data?.message}). Retrying with verified domain ${verifiedFallbackFrom}...`);
+        
         response = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -187,12 +191,14 @@ export default async function handler(req, res) {
             'User-Agent': 'Resend-Node/4.0.0',
           },
           body: JSON.stringify({
-            from: 'Healthcare Store <onboarding@resend.dev>',
+            from: verifiedFallbackFrom,
+            reply_to: 'udodirithonia@gmail.com',
             to: Array.isArray(toAddr) ? toAddr : [toAddr],
-            subject: `[Order Alert] ${subject}`,
-            html: `<div style="padding:10px;background:#fef3c7;color:#92400e;margin-bottom:12px;font-size:12px;border-radius:6px;">⚠️ Note: Sent via onboarding@resend.dev while sales@healthcarestore.com.ng domain DNS is completing verification on Resend.</div>` + html,
+            subject,
+            html,
           }),
         });
+
         data = await response.json();
       }
 
@@ -204,31 +210,35 @@ export default async function handler(req, res) {
 
     let emailSentToMerchant = false;
     let emailSentToCustomer = false;
-    let resendError = null;
+    let merchantError = null;
+    let customerError = null;
 
+    // Send to Merchant (Thonia)
     try {
-      // Send to Merchant
-      await sendEmail(
-        configuredFrom,
+      const resM = await sendEmailWithFallback(
         merchantEmail,
         `🚨 [NEW ORDER #${orderId}] ${fullName} - ₦${price || 'POD'} - ${packageSelected}`,
         merchantHtml
       );
-      emailSentToMerchant = true;
+      if (resM?.id) emailSentToMerchant = true;
+    } catch (err) {
+      console.error('[Merchant Email Error]', err.message);
+      merchantError = err.message;
+    }
 
-      // Send to Customer if valid email provided
-      if (email && email.includes('@')) {
-        await sendEmail(
-          configuredFrom,
+    // Send to Customer if valid email provided
+    if (email && email.includes('@')) {
+      try {
+        const resC = await sendEmailWithFallback(
           email.trim(),
           `Order Confirmation: CapsaCare™ Neuropathy Cream (Order #${orderId})`,
           customerHtml
         );
-        emailSentToCustomer = true;
+        if (resC?.id) emailSentToCustomer = true;
+      } catch (err) {
+        console.error('[Customer Email Error]', err.message);
+        customerError = err.message;
       }
-    } catch (err) {
-      console.error('[Resend Error]', err.message);
-      resendError = err.message;
     }
 
     return res.status(200).json({
@@ -236,7 +246,8 @@ export default async function handler(req, res) {
       orderId,
       emailSentToMerchant,
       emailSentToCustomer,
-      resendError,
+      merchantError,
+      customerError,
       message: 'Order received successfully! Our dispatch officer will call you shortly to confirm delivery.',
     });
   } catch (error) {

@@ -117,6 +117,26 @@
       box-shadow: 0 4px 12px rgba(21, 138, 94, 0.15);
     }
   </style>
+
+  <!-- Meta Pixel Code -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '171511380189850');
+    fbq('track', 'PageView');
+  </script>
+  <noscript>
+    <img height="1" width="1" style="display:none"
+    src="https://www.facebook.com/tr?id=171511380189850&ev=PageView&noscript=1"/>
+  </noscript>
+  <!-- End Meta Pixel Code -->
+
 </head>
 <body class="bg-[#fafbfc] text-gray-900 antialiased pb-20 md:pb-8">
 
@@ -780,9 +800,9 @@
 
             <div>
               <label class="block text-xs font-bold text-gray-700 mb-1">
-                Your Email Address <span class="text-gray-400 font-normal">(Optional, for instant receipt & dispatch tracking)</span>
+                Your Email Address <span class="text-red-500">*</span> <span class="text-emerald-700 font-bold text-[11px]">(Required for order confirmation receipt)</span>
               </label>
-              <input type="email" id="cust-email" placeholder="e.g. yourname@gmail.com" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400 font-medium text-sm transition">
+              <input type="email" id="cust-email" required placeholder="e.g. yourname@gmail.com" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder-gray-400 font-medium text-sm transition">
             </div>
 
             <div>
@@ -1106,6 +1126,10 @@
       const phone = document.getElementById('cust-phone').value.trim();
       const whatsapp = document.getElementById('cust-whatsapp').value.trim();
       const email = document.getElementById('cust-email').value.trim();
+      if (!email || !email.includes('@')) {
+        showError('Please enter a valid email address to receive your order confirmation.');
+        return;
+      }
       const state = document.getElementById('cust-state').value;
       const address = document.getElementById('cust-address').value.trim();
       const notes = document.getElementById('cust-notes').value.trim();
@@ -1149,7 +1173,22 @@
         });
 
         const resData = await response.json();
+        if (!response.ok) {
+          throw new Error(resData.error || 'Failed to process order. Please try again.');
+        }
+
         const orderId = resData.orderId || ('HCS-' + String(Date.now()).slice(-6));
+
+        // Fire Meta Pixel Lead event ONLY after confirmed successful order creation
+        if (typeof window.fbq === 'function') {
+          window.fbq('track', 'Lead', {
+            content_name: selectedPackage,
+            currency: 'NGN',
+            value: parseFloat(selectedPrice.replace(/,/g, '')) || 0,
+            order_id: orderId
+          });
+          console.log('[Meta Pixel] Lead event tracked successfully for order #' + orderId);
+        }
 
         // Display Success State
         orderForm.classList.add('hidden');
