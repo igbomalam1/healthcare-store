@@ -128,12 +128,12 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '171511380189850');
+    fbq('init', '1715111380189850');
     fbq('track', 'PageView');
   </script>
   <noscript>
     <img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=171511380189850&ev=PageView&noscript=1"/>
+    src="https://www.facebook.com/tr?id=1715111380189850&ev=PageView&noscript=1"/>
   </noscript>
   <!-- End Meta Pixel Code -->
 
@@ -1179,15 +1179,23 @@
 
         const orderId = resData.orderId || ('HCS-' + String(Date.now()).slice(-6));
 
-        // Fire Meta Pixel Lead event ONLY after confirmed successful order creation
+        // Fire Meta Pixel Purchase & Lead events ONLY after confirmed successful order creation
         if (typeof window.fbq === 'function') {
+          const numValue = parseFloat(selectedPrice.replace(/,/g, '')) || 0;
+          window.fbq('track', 'Purchase', {
+            content_name: selectedPackage,
+            content_type: 'product',
+            currency: 'NGN',
+            value: numValue,
+            order_id: orderId
+          });
           window.fbq('track', 'Lead', {
             content_name: selectedPackage,
             currency: 'NGN',
-            value: parseFloat(selectedPrice.replace(/,/g, '')) || 0,
+            value: numValue,
             order_id: orderId
           });
-          console.log('[Meta Pixel] Lead event tracked successfully for order #' + orderId);
+          console.log('[Meta Pixel] Purchase & Lead events tracked successfully for order #' + orderId);
         }
 
         // Display Success State
